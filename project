@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NomadFlix — Streaming Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; background-color: #0a0a0a; scroll-behavior: smooth; }
+
+        .movie-card { transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .movie-card:hover { transform: translateY(-8px) scale(1.03); z-index: 10; }
+        
+        .movie-card-overlay {
+            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+            opacity: 0; transition: opacity 0.3s ease;
+            position: absolute; inset: 0; display: flex; justify-content: center;
+            align-items: center; font-size: 1rem; font-weight: bold; border-radius: 0.75rem;
+        }
+        .movie-card:hover .movie-card-overlay { opacity: 1; }
+
+        #toast {
+            position: fixed; bottom: 2rem; right: 2rem; background: #e50914; color: #fff;
+            padding: 1rem 2rem; border-radius: 0.5rem; opacity: 0; pointer-events: none;
+            transition: all 0.3s ease; z-index: 1000; box-shadow: 0 10px 30px rgba(229, 9, 20, 0.3);
+        }
+        #toast.show { opacity: 1; transform: translateY(-10px); }
+
+        .star-rating .star { color: #333; transition: all 0.2s ease; }
+        .star-rating .star.hover, .star-rating .star.selected { color: #facc15; transform: scale(1.2); }
+
+        .modal-base { transition: all 0.4s ease; opacity: 0; visibility: hidden; backdrop-filter: blur(8px); }
+        .modal-base.active { opacity: 1; visibility: visible; }
+        
+        .modal-container { 
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transform: scale(0.8) translateY(20px); 
+            opacity: 0;
+        }
+        .modal-base.active .modal-container { transform: scale(1) translateY(0); opacity: 1; }
+
+        ::-webkit-scrollbar { height: 6px; width: 6px; }
+        ::-webkit-scrollbar-track { background: #111; }
+        ::-webkit-scrollbar-thumb { background: #e50914; border-radius: 10px; }
+    </style>
+</head>
+
+<body class="text-white">
+
+<div id="toast"></div>
+
+<header class="fixed top-0 w-full z-50 bg-black/80 backdrop-blur-md border-b border-white/10 p-4 flex justify-between items-center px-8">
+    <div class="flex items-center space-x-8">
+        <div class="text-red-600 font-black text-3xl tracking-tighter cursor-pointer uppercase" onclick="location.reload()">NomadFlix</div>
+        <nav class="hidden md:block">
+            <ul class="flex space-x-6 text-sm font-medium text-gray-400">
+                <li><a href="#" class="hover:text-white transition">Home</a></li>
+                <li><a href="#originals" class="hover:text-white transition">Originals</a></li>
+                <li><a id="goals-link" class="hover:text-red-500 cursor-pointer transition uppercase font-bold text-red-600">Goals</a></li>
+            </ul>
+        </nav>
+    </div>
+    <div class="flex items-center space-x-6">
+        <div class="relative">
+            <input type="text" id="search-input" placeholder="Search title..." 
+                   class="pl-10 pr-4 py-2 rounded-full bg-gray-900 border border-gray-700 text-sm focus:ring-2 focus:ring-red-600 outline-none w-64 transition-all">
+            <span class="absolute left-3 top-2.5 opacity-40">🔍</span>
+        </div>
+        <div id="auth-zone" class="flex items-center space-x-4 border-l border-gray-700 pl-6">
+            </div>
+    </div>
+</header>
+
+<section id="hero" class="relative h-[85vh] flex items-center justify-start px-12 bg-cover bg-center" 
+         style="background-image: linear-gradient(to right, #000 20%, transparent 80%), url('https://www.plex.tv/wp-content/uploads/2025/03/Watch-Free-Hero-2048x1152-1.png');">
+    <div class="relative z-10 max-w-2xl">
+        <span class="bg-red-600 text-xs font-bold px-2 py-1 rounded mb-4 inline-block uppercase tracking-widest">New Release</span>
+        <h2 class="text-7xl font-black mb-4 tracking-tighter">Stories from <br> the Steppe</h2>
+        <p class="text-lg mb-8 text-gray-300 leading-relaxed">Experience the raw beauty and untold epics of Central Asia. From legendary queens to modern struggles, only on NomadFlix.</p>
+        <div class="flex space-x-4">
+            <a href="title.html" class="bg-white text-black hover:bg-gray-200 px-8 py-4 rounded-md font-bold text-lg transition shadow-xl">Start Watching</a>
+            <button class="bg-gray-500/30 backdrop-blur-md hover:bg-gray-500/50 px-8 py-4 rounded-md font-bold text-lg transition border border-white/20">More Info</button>
+        </div>
+    </div>
+</section>
+
+<main class="relative z-20 -mt-20 space-y-16 pb-20">
+    <section id="my-list-section" class="hidden">
+        <h3 class="text-2xl font-bold mb-6 px-12 text-red-500 flex items-center italic">
+            <span class="mr-3 w-8 h-[2px] bg-red-600"></span> My Favorites
+        </h3>
+        <div id="mylist-container" class="flex space-x-6 px-12 overflow-x-auto pb-4 no-scrollbar"></div>
+    </section>
+
+    <section>
+        <h3 class="text-2xl font-bold mb-6 px-12 uppercase tracking-widest text-gray-500">Trending Now</h3>
+        <div id="trending-container" class="flex space-x-6 px-12 overflow-x-auto pb-4"></div>
+    </section>
+
+    <section id="originals">
+        <h3 class="text-2xl font-bold mb-6 px-12 uppercase tracking-widest text-red-600">Nomad Originals</h3>
+        <div id="originals-container" class="flex space-x-6 px-12 overflow-x-auto pb-4"></div>
+    </section>
+
+    <section id="browse">
+        <div class="px-12 flex justify-between items-end mb-8">
+            <h3 class="text-2xl font-bold uppercase tracking-widest text-gray-500">Explore Catalog</h3>
+            <div class="flex space-x-2">
+                <button class="filter-btn text-xs bg-gray-800 px-4 py-2 rounded-full hover:bg-red-600 transition" data-category="All">All</button>
+                <button class="filter-btn text-xs bg-gray-800 px-4 py-2 rounded-full hover:bg-red-600 transition" data-category="Originals">Originals</button>
+                <button class="filter-btn text-xs bg-gray-800 px-4 py-2 rounded-full hover:bg-red-600 transition" data-category="Kazakhstan Picks">Local</button>
+            </div>
+        </div>
+        <div id="browse-container" class="flex flex-wrap gap-6 px-12 justify-start"></div>
+    </section>
+</main>
+
+<div id="movie-modal" class="modal-base fixed inset-0 bg-black/90 flex items-center justify-center z-[100] p-4 hidden">
+    <div class="modal-container bg-[#141414] rounded-2xl w-full max-w-5xl relative overflow-hidden shadow-2xl flex flex-col md:flex-row border border-white/5">
+        <button id="modal-close" class="absolute top-5 right-6 text-white/50 text-4xl z-10 hover:text-red-500 transition">&times;</button>
+        <div class="w-full md:w-2/5 relative">
+            <img id="modal-img" class="w-full h-full object-cover" src="" alt="Poster">
+            <div class="absolute inset-0 bg-gradient-to-t from-[#141414] via-transparent"></div>
+        </div>
+        <div class="p-10 flex-1 flex flex-col max-h-[90vh] overflow-y-auto">
+            <h2 id="modal-title" class="text-5xl font-black mb-4 tracking-tighter"></h2>
+            <div class="flex items-center gap-4 mb-6 text-sm">
+                <span id="modal-genre" class="px-3 py-1 bg-red-600/20 text-red-500 rounded-full font-bold"></span>
+                <span id="modal-rating" class="text-yellow-400 font-bold"></span>
+            </div>
+            <p id="modal-description" class="text-lg text-gray-400 mb-8 leading-relaxed"></p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                <div class="bg-white/5 p-6 rounded-xl border border-white/5">
+                    <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-4 font-bold">Rate this title</h3>
+                    <div id="rating-container" class="star-rating flex gap-3 mb-2">
+                        <span class="star cursor-pointer text-3xl" data-value="1">&#9733;</span>
+                        <span class="star cursor-pointer text-3xl" data-value="2">&#9733;</span>
+                        <span class="star cursor-pointer text-3xl" data-value="3">&#9733;</span>
+                        <span class="star cursor-pointer text-3xl" data-value="4">&#9733;</span>
+                        <span class="star cursor-pointer text-3xl" data-value="5">&#9733;</span>
+                    </div>
+                    <p id="user-rating" class="text-xs text-gray-500">Not rated yet</p>
+                </div>
+                <div class="flex flex-col justify-center space-y-3">
+                    <button id="play-btn" class="w-full bg-white text-black py-4 rounded-lg font-black uppercase tracking-wider hover:bg-red-600 hover:text-white transition">Play Trailer</button>
+                    <button id="add-list-btn-modal" class="w-full bg-gray-800 py-4 rounded-lg font-bold uppercase tracking-wider border border-white/10 hover:bg-gray-700 transition">Add to List</button>
+                </div>
+            </div>
+
+            <div class="border-t border-white/10 pt-8">
+                <h3 class="text-sm uppercase tracking-widest text-gray-500 mb-6 font-bold">Community Reviews</h3>
+                <div id="reviews-list" class="space-y-4 mb-8 max-h-48 overflow-y-auto pr-4"></div>
+                <div class="flex gap-4">
+                    <input id="review-text" placeholder="Add a comment..." class="flex-1 p-4 rounded-lg bg-white/5 border border-white/10 outline-none focus:border-red-600 transition">
+                    <button id="submit-review" class="bg-red-600 px-6 py-4 rounded-lg font-bold">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="goals-modal" class="modal-base fixed inset-0 bg-black/95 flex items-center justify-center z-[110] p-4 hidden">
+    <div class="modal-container bg-[#0a0a0a] rounded-3xl w-full max-w-2xl p-12 relative border border-red-600/30">
+        <button id="goals-close" class="absolute top-8 right-8 text-white/30 text-4xl hover:text-white">&times;</button>
+        <h2 class="text-5xl font-black text-white mb-2 uppercase tracking-tighter">Our <span class="text-red-600">Vision.</span></h2>
+        <p class="text-gray-500 mb-10 font-medium">The Roadmap of NomadFlix Platform</p>
+        
+        <div class="space-y-10">
+            <div class="flex gap-6">
+                <div class="text-red-600 font-black text-2xl">01</div>
+                <div>
+                    <h3 class="text-xl font-bold mb-2">Preserving Heritage</h3>
+                    <p class="text-gray-400 leading-relaxed">We digitize classic Central Asian cinema, ensuring that the masterpieces of the past are never forgotten by future generations.</p>
+                </div>
+            </div>
+            <div class="flex gap-6 border-l-2 border-red-600/30 pl-6">
+                <div class="text-red-600 font-black text-2xl">02</div>
+                <div>
+                    <h3 class="text-xl font-bold mb-2">Empowering Local Talents</h3>
+                    <p class="text-gray-400 leading-relaxed">Our platform serves as a launchpad for young Kazakhstani directors and writers to reach a global audience.</p>
+                </div>
+            </div>
+            <div class="flex gap-6">
+                <div class="text-red-600 font-black text-2xl">03</div>
+                <div>
+                    <h3 class="text-xl font-bold mb-2">Tech Excellence</h3>
+                    <p class="text-gray-400 leading-relaxed">Providing 4K streaming and seamless UX, proving that local platforms can compete with global giants.</p>
+                </div>
+            </div>
+        </div>
+        <div class="mt-12 pt-8 border-t border-white/5 text-center">
+            <p class="text-red-500 font-black uppercase tracking-widest text-sm italic">Created by Zhasulan • Woosong University</p>
+        </div>
+    </div>
+</div>
+
+<div id="trailer-box" class="hidden fixed inset-0 bg-black/98 flex items-center justify-center z-[120]">
+    <button class="absolute top-10 right-10 text-white/50 text-5xl hover:text-white transition" id="close-trailer">&times;</button>
+    <iframe id="trailer-frame" class="w-11/12 max-w-6xl aspect-video rounded-2xl shadow-2xl border border-white/10" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+</div>
+
+<footer class="text-center text-gray-600 py-12 border-t border-white/5 bg-black">
+    <div class="logo-min mb-4 opacity-50">NomadFlix</div>
+    <p class="text-xs uppercase tracking-[5px]">© 2025 Central Asia Streaming Service</p>
+</footer>
+
+<script>
+/* ================= DATA & CONFIG ================= */
+const $ = id => document.getElementById(id);
+
+const movies = [
+    { title: "The Legend of Tomiris", category: "Trending", genre: "Action", rating: 4.8, image: "https://m.media-amazon.com/images/M/MV5BYzVjZDczZDMtNGI5NS00MWFiLTg0NWQtZDlkOTc5YWU0ZDE3XkEyXkFqcGc@._V1_FMjpg_UX1000_.jpg", description: "A legendary queen leads her tribes in a high-stakes battle against the world's most powerful empire." },
+    { title: "Tulpan", category: "Trending", genre: "Romance", rating: 4.2, image: "https://i0.wp.com/sovietmoviesonline.com/wp-content/uploads/336-1.jpg?fit=740%2C1040&ssl=1", description: "A young dreamer returns to the remote wilderness to start a life, but finding love is his toughest challenge." },
+    { title: "The Kazakh Khanate", category: "Originals", genre: "Drama", rating: 4.9, image: "https://m.media-amazon.com/images/M/MV5BYzkxNTUyZDctNjVhMi00ZTFjLWI2M2QtYjUzMTAzMGJmN2RhXkEyXkFqcGc@._V1_.jpg", description: "Two visionary leaders defy an empire to unite the wandering tribes and forge a legacy." },
+    { title: "Myn Bala", category: "Originals", genre: "Adventure", rating: 4.4, image: "https://m.media-amazon.com/images/M/MV5BYzY0NGNkNGUtNWRlZC00YmI3LThmN2EtYjdlNWRmMTdmODMxXkEyXkFqcGc@._V1_.jpg", description: "A band of fearless young warriors rises from the ashes to reclaim their home." },
+    { title: "The Horse Thieves", category: "Originals", genre: "Drama", rating: 4.5, image: "https://m.media-amazon.com/images/M/MV5BOGYzZjBjMGEtOTE1My00NGI2LWI3MzYtNmI0OTVhM2IxYjVmXkEyXkFqcGc@._V1_.jpg", description: "A family’s life on the steppe is shattered by violence, leading to a journey of vengeance." },
+    { title: "Yellow Cat", category: "Originals", genre: "Crime", rating: 4.1, image: "https://m.media-amazon.com/images/M/MV5BNzI4NWViOTAtNzVmMi00NDJhLTg2OTYtYTA2OTBiYmMwMDE2XkEyXkFqcGc@._V1_FMjpg_UX1000_.jpg", description: "An eccentric dreamer wants to build a cinema, but must escape a small-town gang." },
+    { title: "Aika", category: "Originals", genre: "Drama", rating: 4.8, image: "https://upload.wikimedia.org/wikipedia/ru/0/0f/Ayka_poster.jpg", description: "A young migrant woman struggles to survive in the cold, unforgiving landscape of a modern metropolis." },
+    { title: "Amre", category: "Kazakhstan Picks", genre: "Biography", rating: 4.3, image: "https://avatars.mds.yandex.net/get-kinopoisk-image/1946459/40474a78-58ff-41c1-bf81-e7602879c811/600x900", description: "True story of a Kazakh singer who stunned Paris in 1925 with the beauty of the dombra." },
+    { title: "Shal", category: "Kazakhstan Picks", genre: "Drama", rating: 4.9, image: "https://upload.wikimedia.org/wikipedia/ru/b/b0/%D0%9F%D0%BE%D1%81%D1%82%D0%B5%D1%80_%D1%84%D0%B8%D0%BB%D1%8C%D0%BC%D0%B0_%C2%AB%D0%A8%D0%B0%D0%BB%C2%BB.jpg", description: "An elderly shepherd must rely on ancestral wisdom to survive a battle against wolves." }
+];
+
+let currentMovie = null;
+
+/* ================= CORE LOGIC ================= */
+
+document.addEventListener('DOMContentLoaded', () => {
+    const user = localStorage.getItem('currentUser');
+    
+    // БЛОК ЗАЩИТЫ: Если юзера нет, кидаем на signin.html
+    if (!user) {
+        window.location.href = 'signin.html';
+        return; // Дальше код не выполняем
+    }
+
+    // Если юзер есть, настраиваем шапку
+    const authZone = $("auth-zone");
+    if (authZone) {
+        authZone.innerHTML = `
+            <span class="text-gray-500 text-xs font-bold uppercase tracking-widest">User: <b class="text-white">${user}</b></span>
+            <button onclick="logout()" class="text-[10px] bg-red-600/10 hover:bg-red-600 text-red-600 hover:text-white px-3 py-1.5 rounded-full transition-all font-black uppercase">Logout</button>
+        `;
+    }
+
+    initApp();
+});
+
+function initApp() {
+    renderAllRows();
+    renderMyList();
+    setupEventListeners();
+}
+
+function logout() {
+    localStorage.removeItem('currentUser');
+    window.location.href = 'signin.html'; // Возвращаем на страницу входа
+}
+
+function createCard(movie) {
+    const myList = JSON.parse(localStorage.getItem('myList') || "[]");
+    const isFav = myList.includes(movie.title);
+    
+    const div = document.createElement("div");
+    div.className = "movie-card relative w-56 bg-[#1a1a1a] rounded-xl overflow-hidden cursor-pointer flex-shrink-0";
+    div.innerHTML = `
+        <img src="${movie.image}" alt="${movie.title}" class="w-full h-72 object-cover">
+        <button onclick="toggleFavorite('${movie.title}', event)" 
+                class="absolute top-3 right-3 z-30 w-9 h-9 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center hover:scale-110 transition ${isFav ? 'text-red-500' : 'text-white'}">
+            ${isFav ? '❤' : '+'}
+        </button>
+        <div class="movie-card-overlay">
+            <span class="bg-white text-black px-4 py-2 rounded-full text-xs">Details</span>
+        </div>
+        <div class="p-3">
+            <h4 class="font-bold text-sm truncate">${movie.title}</h4>
+            <div class="flex justify-between items-center mt-1">
+                <p class="text-[10px] text-gray-500 font-bold uppercase">${movie.genre}</p>
+                <p class="text-yellow-500 text-[10px]">⭐ ${movie.rating}</p>
+            </div>
+        </div>`;
+    
+    div.querySelector('.movie-card-overlay').onclick = () => showMovieModal(movie);
+    return div;
+}
+
+function renderRow(containerId, list) {
+    const container = $(containerId);
+    if (!container) return;
+    container.innerHTML = "";
+    list.forEach(m => container.appendChild(createCard(m)));
+}
+
+function renderAllRows() {
+    renderRow("trending-container", movies.filter(m => m.category === "Trending"));
+    renderRow("originals-container", movies.filter(m => m.category === "Originals"));
+    renderRow("browse-container", movies);
+}
+
+function renderMyList() {
+    const myListNames = JSON.parse(localStorage.getItem('myList') || "[]");
+    const section = $("my-list-section");
+    const favoriteMovies = movies.filter(m => myListNames.includes(m.title));
+    
+    if (favoriteMovies.length > 0) {
+        section.classList.remove('hidden');
+        renderRow("mylist-container", favoriteMovies);
+    } else {
+        section.classList.add('hidden');
+    }
+}
+
+function toggleFavorite(movieTitle, event) {
+    event.stopPropagation();
+    let myList = JSON.parse(localStorage.getItem('myList') || "[]");
+    
+    if (myList.includes(movieTitle)) {
+        myList = myList.filter(t => t !== movieTitle);
+        toast("Removed from My List");
+    } else {
+        myList.push(movieTitle);
+        toast("Added to My List!");
+    }
+    
+    localStorage.setItem('myList', JSON.stringify(myList));
+    renderMyList();
+    renderAllRows();
+}
+
+/* ================= EVENT LISTENERS ================= */
+
+function setupEventListeners() {
+    $("search-input").addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase();
+        const filtered = movies.filter(m => m.title.toLowerCase().includes(query) || m.genre.toLowerCase().includes(query));
+        renderRow("browse-container", filtered);
+    });
+
+    document.querySelectorAll(".filter-btn").forEach(btn => {
+        btn.onclick = () => {
+            const cat = btn.dataset.category;
+            renderRow("browse-container", cat === "All" ? movies : movies.filter(m => m.category === cat));
+        };
+    });
+
+    $("modal-close").onclick = () => toggleModal("movie-modal", false);
+    $("submit-review").onclick = submitReview;
+    $("play-btn").onclick = playTrailer;
+    $("close-trailer").onclick = () => { $("trailer-box").classList.add("hidden"); $("trailer-frame").src = ""; };
+
+    document.querySelectorAll("#rating-container .star").forEach(star => {
+        star.onmouseenter = () => highlightStars(star.dataset.value);
+        star.onmouseleave = () => updateStarDisplay(getSavedRating(currentMovie?.title));
+        star.onclick = () => saveRating(star.dataset.value);
+    });
+
+    $("goals-link").onclick = () => toggleModal("goals-modal", true);
+    $("goals-close").onclick = () => toggleModal("goals-modal", false);
+}
+
+/* ================= UI HELPERS ================= */
+
+function toggleModal(id, show) {
+    const modal = $(id);
+    if (show) {
+        modal.classList.add("active");
+        modal.classList.remove("hidden");
+        document.body.style.overflow = "hidden";
+    } else {
+        modal.classList.remove("active");
+        setTimeout(() => {
+            modal.classList.add("hidden");
+            document.body.style.overflow = "auto";
+        }, 400);
+    }
+}
+
+function showMovieModal(movie) {
+    currentMovie = movie;
+    $("modal-title").textContent = movie.title;
+    $("modal-genre").textContent = movie.genre;
+    $("modal-rating").textContent = `Rating: ${movie.rating}/5`;
+    $("modal-description").textContent = movie.description;
+    $("modal-img").src = movie.image;
+    
+    renderReviews(movie.title);
+    updateStarDisplay(getSavedRating(movie.title));
+    toggleModal("movie-modal", true);
+}
+
+const toast = (msg) => {
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 3000);
+};
+
+/* ================= REVIEWS & RATING ================= */
+
+function getSavedRating(title) {
+    const ratings = JSON.parse(localStorage.getItem("ratings") || "{}");
+    return ratings[title] || 0;
+}
+
+function saveRating(val) {
+    if (!currentMovie) return;
+    const ratings = JSON.parse(localStorage.getItem("ratings") || "{}");
+    ratings[currentMovie.title] = parseInt(val);
+    localStorage.setItem("ratings", JSON.stringify(ratings));
+    updateStarDisplay(val);
+    toast("Thanks for rating!");
+}
+
+function highlightStars(val) {
+    document.querySelectorAll("#rating-container .star").forEach(s => s.classList.toggle("hover", s.dataset.value <= val));
+}
+
+function updateStarDisplay(val) {
+    document.querySelectorAll("#rating-container .star").forEach(s => {
+        s.classList.remove("hover");
+        s.classList.toggle("selected", s.dataset.value <= val);
+    });
+    $("user-rating").textContent = val > 0 ? `Your rating: ${val}/5` : "Not rated yet";
+}
+
+function renderReviews(title) {
+    const allReviews = JSON.parse(localStorage.getItem("reviews") || "{}");
+    const list = $("reviews-list");
+    list.innerHTML = "";
+    (allReviews[title] || []).forEach(r => {
+        const div = document.createElement("div");
+        div.className = "text-sm bg-white/5 p-4 rounded-xl border border-white/5";
+        div.innerHTML = `<p class="text-white mb-1">${r.text}</p><p class="text-[10px] text-red-500 uppercase font-bold">Verified User</p>`;
+        list.appendChild(div);
+    });
+}
+
+function submitReview() {
+    const text = $("review-text").value.trim();
+    if (!text) return toast("Write something first!");
+
+    const allReviews = JSON.parse(localStorage.getItem("reviews") || "{}");
+    if (!allReviews[currentMovie.title]) allReviews[currentMovie.title] = [];
+    allReviews[currentMovie.title].push({ text });
+    
+    localStorage.setItem("reviews", JSON.stringify(allReviews));
+    $("review-text").value = "";
+    renderReviews(currentMovie.title);
+    toast("Comment posted!");
+}
+
+async function playTrailer() {
+    const box = $("trailer-box");
+    const frame = $("trailer-frame");
+    frame.src = "https://www.youtube.com/embed/Bey4qe131yU?autoplay=1"; 
+    box.classList.remove("hidden");
+}
+</script>
+
+</body>
+</html>
